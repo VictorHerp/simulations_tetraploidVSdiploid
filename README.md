@@ -1,1 +1,1 @@
-# simulations_tetraplidVSdiploid
+# simulations_tetraploidVSdiploid
