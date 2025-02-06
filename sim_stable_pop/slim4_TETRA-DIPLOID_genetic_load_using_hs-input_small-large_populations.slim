@@ -122,7 +122,7 @@ reproduction(p3) {
 
 /////////////////////DFE///////////////////////////
 mutation(m1,p1){
-	////////////h & s fijos tomados del burn-in/////////////
+	////////////h & s from burn-in file/////////////
 	MUT=sample(0:mutCOUNT,1);//HM-nov-22
 	selCoef=s[MUT];//HM-nov-22
 	Xh=(h_copies[MUT]/N_copies[MUT]);
@@ -132,7 +132,7 @@ mutation(m1,p1){
 	return T;
 }
 mutation(m1,p2){
-	////////////h & s from burn-in/////////////
+	////////////h & s from burn-in file/////////////
 	MUT=sample(0:mutCOUNT,1);
 	selCoef=s[MUT];
 	Xh=(h_copies[MUT]/N_copies[MUT]);
@@ -145,7 +145,7 @@ mutation(m1,p2){
 /////////////////////DFE DIPLOID///////////////////////////
 mutation(m2,p3){
 
-	////////////h & s from burn-in/////////////
+	////////////h & s from burn-in file/////////////
 	MUT=sample(0:mutCOUNT_dip,1);
 	selCoef_dip=s_dip[MUT];
 	dom=h_mut_dip[MUT];
