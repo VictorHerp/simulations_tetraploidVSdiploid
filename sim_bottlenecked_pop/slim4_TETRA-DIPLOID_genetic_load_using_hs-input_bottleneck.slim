@@ -1,0 +1,704 @@
+// Basic script and debugging: Peter Ralph, september 2019; Benjamin C. Haller, October 2022; William Booker, January 2024
+
+// Victor Muñoz & Hernan Morales, February 2024: genetic load in autotetraploids and diploids with a bottleneck
+
+initialize() {
+	
+	if (exists("mu")==0){
+		defineConstant("mu",1e-9); // mutation rate 
+	}
+	
+	if (exists("rho")==0){
+		defineConstant("rho",1e-4); // recombination rate
+	}
+	
+	if (exists("K")==0){
+		defineConstant("K",2000); // carrying capacity tetraploid
+	}
+	
+	if (exists("Kdiploid")==0){
+		defineConstant("Kdiploid",K*2); // carrying capacity diploid
+	}
+	
+	if (exists("lastGen")==0){
+		defineConstant("lastGen",30000); // last generation
+	}
+	
+	if (exists("burnIN_time")==0){
+		defineConstant("burnIN_time",25000); // burn-in bottleneck
+	}
+	
+	if (exists("minK")==0){
+		defineConstant("minK",40); // for bottleneck tetraploid
+	}
+	
+	if (exists("minKdiploid")==0){
+		defineConstant("minKdiploid",minK*2); // for bottleneck diploid
+	}
+	
+	
+	if (exists("L")==0){
+		defineConstant("L",200e6); // genomic element size
+	}
+	
+//////////////////////////////For output files//////////////////////////////////
+	defineConstant("start", time());
+	defineConstant("outPath", "/PATH/TO/SAVE/OUTPUT/FILES");
+	defineConstant("outName", "BTTLN_"+start+"_"+"chr200M_tetra_"+"load_hs-input");
+	defineConstant("outName_dip", "BTTLN_"+start+"_"+"chr200M_diploid_"+"load_hs-input");
+	defineConstant("outTimes",outPath+"/"+"TIME_"+outName+"_K"+K+"_seed"+getSeed()+"_lastGen"+lastGen);
+	
+//////////////////////////////Input deleterious mutations tetraploids//////////////////////////////////
+	////input deleterious DFE////	
+	defineConstant("hs_input", "/PATH/WHERE/IS/HS-INPUT/FILE/burnIN_tetra_mut_hs-input_rcssv.txt");
+	defineConstant("del_mut", 1000); // number of deleterious mutation
+	hs=readFile(hs_input);
+	hs=hs[1:(length(hs)-1)];
+	if((length(hs)-1)>del_mut){
+		hs=hs[sample(0:(length(hs)-1),del_mut)];
+	}
+	defineConstant("mutCOUNT", length(hs)-1);
+	defineConstant("s", asFloat(sapply(hs,"strsplit(applyValue,'\t')[4];")));
+	defineConstant("h_copies", asFloat(sapply(hs,"strsplit(applyValue,'\t')[5];")));
+	defineConstant("N_copies", asFloat(sapply(hs,"strsplit(applyValue,'\t')[6];")));
+	
+	////////////////////Input deleterious mutations diploids////////////////////////////////////////
+	
+	defineConstant("hs_input_dip", "/PATH/WHERE/IS/HS-INPUT/FILE/burn-in_mut_diploid.txt");
+	defineConstant("del_mut_dip", 1000); // number of deleterious mutation
+	hs_dip=readFile(hs_input_dip);
+	hs_dip=hs_dip[1:(length(hs_dip)-1)];
+	if((length(hs_dip)-1)>del_mut_dip){
+		hs_dip=hs_dip[sample(0:(length(hs_dip)-1),del_mut_dip)];
+	}
+	
+	defineConstant("mutCOUNT_dip", length(hs_dip)-1);
+	defineConstant("s_dip", asFloat(sapply(hs_dip,"strsplit(applyValue,'\t')[4];")));
+	defineConstant("h_mut_dip", asFloat(sapply(hs_dip,"strsplit(applyValue,'\t')[5];")));
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	
+	initializeSLiMModelType("nonWF");
+	
+	//s_fixed = "rgamma(1,-0.05,0.5);";
+	initializeMutationType("m1", 0.5, "f", 0.0);//// deleterious mutations in tetraploids but neutral in diploids (maintanied when fixed)
+	m1.convertToSubstitution = F;
+	initializeMutationType("m2", 0.5, "f", 0.0);//// deleterious mutations in diploids but neutral in tetraploids (maintanied when fixed)
+	m2.convertToSubstitution = F;
+	
+	initializeGenomicElementType("g1", c(m1,m2), c(0.5,0.5));
+	initializeGenomicElement(g1, 0, L - 1);
+	initializeMutationRate(mu);
+	initializeRecombinationRate(1e-8);
+}
+
+////////Bug control///////////
+2: first() {
+	for (ind in p1.individuals)
+		if (ind.tagF != p2.individuals[ind.tag].tagF)
+			stop("first(): error for individual " + ind.index);
+}
+/////////////TETRAPLOID REPRODUCTION///////////////
+reproduction(p1) {
+	mate = p1.sampleIndividuals(1, replace=T);
+	ma_chroms = c(individual.genomes, p2.individuals[individual.tag].genomes);
+	pa_chroms = c(mate.genomes, p2.individuals[mate.tag].genomes);
+	ma_order = sample(seqLen(4), 4);
+	pa_order = sample(seqLen(4), 4);
+	breakpoints1 = sim.chromosome.drawBreakpoints();
+	breakpoints2 = sim.chromosome.drawBreakpoints();
+	offspring = p1.addRecombinant(ma_chroms[ma_order[0]], ma_chroms[ma_order[1]], breakpoints1,
+		pa_chroms[pa_order[0]], pa_chroms[pa_order[1]], breakpoints2);
+	breakpoints1 = sim.chromosome.drawBreakpoints();
+	breakpoints2 = sim.chromosome.drawBreakpoints();
+	other = p2.addRecombinant(ma_chroms[ma_order[2]], ma_chroms[ma_order[3]], breakpoints1,
+		pa_chroms[pa_order[2]], pa_chroms[pa_order[3]], breakpoints2);
+	tag = runif(1);
+	offspring.tagF = tag;
+	other.tagF = tag;
+}
+///////////////////////DIPLOID REPRODUCTION//////////////////
+reproduction(p3) {
+	mate = p3.sampleIndividuals(1, replace=T);
+	ma_chroms = individual.genomes;
+	pa_chroms = mate.genomes;
+	ma_order = sample(seqLen(2), 2);
+	pa_order = sample(seqLen(2), 2);
+	breakpoints1 = sim.chromosome.drawBreakpoints();
+	breakpoints2 = sim.chromosome.drawBreakpoints();
+	offspring = p3.addRecombinant(ma_chroms[ma_order[0]], ma_chroms[ma_order[1]], breakpoints1,
+		pa_chroms[pa_order[0]], pa_chroms[pa_order[1]], breakpoints2);
+
+}
+
+/////////////////////DFE TETRAPLOID///////////////////////////
+mutation(m1,p1){
+	////////////fixed h & s from the burn-in replicate/////////////
+	MUT=sample(0:mutCOUNT,1);
+	selCoef=s[MUT];
+	Xh=(h_copies[MUT]/N_copies[MUT]);
+	Xh=c(0.0, Xh*1,Xh*2,Xh*3, 1.0);
+	mut.setValue("s", selCoef);
+	mut.setValue("h", Xh);
+	return T;
+}
+mutation(m1,p2){
+	
+	MUT=sample(0:mutCOUNT,1);
+	selCoef=s[MUT];
+	Xh=(h_copies[MUT]/N_copies[MUT]);
+	Xh=c(0.0, Xh*1,Xh*2,Xh*3, 1.0);
+	mut.setValue("s", selCoef);
+	mut.setValue("h", Xh);
+	return T;
+}
+
+/////////////////////DFE DIPLOID///////////////////////////
+mutation(m2,p3){
+	////////////fixed h & s from the burn-in replicate/////////////
+	MUT=sample(0:mutCOUNT_dip,1);
+	selCoef_dip=s_dip[MUT];
+	dom=h_mut_dip[MUT];
+	Xh_dip=c(0.0,dom,1.0);
+	mut.setValue("s_dip", selCoef_dip);
+	mut.setValue("h_dip", Xh_dip);
+	
+	return T;
+}
+
+
+1 early() {
+	sim.addSubpop("p1", K);
+	sim.addSubpop("p2", p1.individualCount);
+	sim.addSubpop("p3", Kdiploid);
+	community.rescheduleScriptBlock(s0, lastGen, lastGen);
+	sim.tag=K;
+	///////FOR BOTTLENECK//////////
+	initGen=sim.cycle;
+	community.rescheduleScriptBlock(s2, burnIN_time, lastGen);
+
+	print("initGen:"+initGen);
+	print("brunIN:"+burnIN_time);
+	print("last:"+lastGen);
+	print("s2: burnin to last");
+	print(s2);
+	print("s0: last");
+	print(s0);
+	
+////////////FOR THE OUTPUT FILES///////////////////	
+	defineConstant("outPref",outPath+"/"+outName+"_K"+K+"_seed"+getSeed()+"_lastGen"+lastGen+"_mu"+mu);
+	defineConstant("outPref_dip",outPath+"/"+outName_dip+"_K"+Kdiploid+"_seed"+getSeed()+"_lastGen"+lastGen+"_mu"+mu); //////DIPLOID/////
+	HEAD_INDV="scenario" +"\t"+ "generation"+"\t"+ "indvCount" +"\t"+ "indiv.tag" + "\t"+"Mutcount" +"\t"+ "totalLoad" +"\t"+ "relzLoad" +"\t"+ "mskLoad"+"\t"+"fitness";
+	HEAD_MUT2="generation"+"\t"+ "indiv.tag" +"\t"+ "Mutcount" +"\t"+ "fitness" +"\t"+ "s" +"\t"+ "h" +"\t"+ "counts_copy"+"\t"+"freq";
+	
+	////////////////////////////FILES TETRAPLOID//////////////////////////////////////
+	writeFile(outPref + "_indv_load_tetra.txt",HEAD_INDV,append=F);
+	writeFile(outPref + "_mut_surv_tetra.txt",HEAD_MUT2,append=F);
+	
+	////////////////////////////FILES DIPLOID//////////////////////////////////////
+	writeFile(outPref_dip + "_indv_load_dip.txt",HEAD_INDV,append=F);
+	writeFile(outPref_dip + "_mut_surv_dip.txt",HEAD_MUT2,append=F);
+////////////////////////////////////////////////////////////////////////////////////////////////////	
+	
+	for (k in seqLen(p1.individualCount)) {
+		// we can't point to the other individual so we have to associate them with unique tags
+		tag = runif(1);
+		p1.individuals[k].tagF = tag;
+		p2.individuals[k].tagF = tag;
+		p1.individuals[k].tag = k;
+	}
+}
+
+//////////////////////////////BOTTLENECK//////////////////////////////////////////
+s2 late() {
+	//////////////TETRAPLOIDS/////////////////////////////////
+	if(sim.tag>minK)
+	{
+		currentK=sim.tag;
+		reduction=asInteger(currentK*0.1);
+		if(reduction==0){reduction=1;}
+		NewK=currentK-reduction;
+		sim.tag=NewK;
+		print("bottleneck --- gen="+sim.cycle+" - currentK:"+currentK+"  NewK:"+NewK);
+	}
+	
+	//////////////DIPLOIDS/////////////////////////////////
+	aKdiploid=sim.tag*2;
+	if(aKdiploid>minKdiploid)
+	{
+		currentKdiploid=aKdiploid;
+		reduction_dip=asInteger(currentKdiploid*0.1);
+		if(reduction_dip==0){reduction_dip=1;}
+		NewKdiploid=currentKdiploid-reduction_dip;
+		aKdiploid=NewKdiploid;
+		print("bottleneck --- gen="+sim.cycle+" - currentK_diploid:"+currentKdiploid+"  NewK_diploid:"+NewKdiploid);
+	}
+
+}
+
+30000 late() {
+	aKdiploid=sim.tag*2;
+	print("bottleneck --- gen="+sim.cycle+" - currentK:"+sim.tag);
+	print("bottleneck --- gen="+sim.cycle+" - currentK_diploid:"+aKdiploid);
+}
+
+2: early() {
+	// initialize tags for new inds
+	// note that this minimal-update strategy only works for hermaphrodites;
+	// in sexual models, the indices of existing individuals may change when
+	// new offspring are created, so a complete remap might be needed
+	inds = p1.individuals[p1.individuals.age == 0];
+	others = p2.individuals[p2.individuals.age == 0];
+	idx = match(inds.tagF, others.tagF);
+	inds.tag = others.index[idx];
+}
+
+////////////Bug check////////////
+101: early (){
+	check_ticks = seq(from=101,to=30000,by=100);
+	if(match(community.tick, check_ticks) >= 0){
+		for (ind in p1.individuals)
+			if (ind.tagF != p2.individuals[ind.tag].tagF)
+				stop("early(): error for individual " + ind.index);
+	}
+}
+
+2: early() {
+	inds = p1.individuals;
+	
+	// mark no-longer-alive p2 individuals for death
+	alive = rep(0.0, p2.individualCount);
+	alive[inds.tag] = 1.0;
+	p2.individuals.fitnessScaling = alive;
+	
+	// update tags to reflect this; note the update must be deferred
+	// until after mortality, so that tags are correct in mutationEffect()
+	// note we are assuming that death won't rearrange their relative orders
+	tag_map = asInteger(cumSum(alive) - 1);
+	for (ind in inds)
+		ind.setValue("newTag", tag_map[ind.tag]);
+}
+
+early() {
+	aKdiploid=sim.tag*2;
+	p1.fitnessScaling = sim.tag / p1.individualCount;
+	p3.fitnessScaling = aKdiploid / p3.individualCount;
+}
+
+///////////////////////////SLiM FITNESS TETRAPLOID//////////////////////////
+fitnessEffect(p1)
+{
+	if(individual.subpopulation == p2)
+		return 1.0;
+	
+	others= p2.individuals[individual.tag];
+	genomes = c(individual.genomes,others.genomes);
+	mutations = unique(genomes.mutationsOfType(m1));
+	if(size(mutations)==0)
+		return 1.0;
+	//mut_counts = genomes.mutationCountsInGenomes(mutations);
+	mut_counts = sapply(mutations,"sum(individual.genomes.containsMutations(applyValue)) + sum(others.genomes.containsMutations(applyValue));");
+	fit_vector = sapply(seqAlong(mutations), "mut = mutations[applyValue]; count = mut_counts[applyValue]; 1 + mut.getValue('h')[count] * mut.getValue('s');");
+	return product(fit_vector);
+}
+
+//////////////////////////SLiM FITNESS DIPLOID/////////////////////////
+fitnessEffect(p3) {
+	genomes = individual.genomes;
+	mutations = unique(genomes.mutationsOfType(m2));
+	if(size(mutations)==0)
+		return 1.0;
+	mut_counts = genomes.mutationCountsInGenomes(mutations);
+	//mut_counts = sapply(mutations,"sum(individual.genomes.containsMutations(applyValue)) + sum(others.genomes.containsMutations(applyValue));");
+	fit_vector = sapply(seqAlong(mutations), "mut = mutations[applyValue]; count = mut_counts[applyValue]; 1 + mut.getValue('h_dip')[count] * mut.getValue('s_dip');");
+	return product(fit_vector);
+}
+
+2: late() {
+	// do the deferred tag update now that mortality has occurred
+	// note additional individuals might have died due to selection and
+	// density-dependent fitness; they will be cleaned up next tick
+	inds = p1.individuals;
+	newTags = inds.getValue("newTag");
+	inds.tag = newTags;
+}
+
+////////////////TIME//////////////////////
+1: late() {
+	
+	if(sim.cycle == 1 | sim.cycle % 100 == 0) {
+		writeFile(outTimes, date() + "\t" + time() + "\t" + "generation: " + sim.cycle + "\t" + "*seed" + getSeed() + "*" + "\t" + "N: " + p1.individualCount + " memory usage: " + usage()/1000 + "Gb");
+	}
+}
+
+/////////////////////OUTPUTS TETRAPLOID///////////////////
+
+2: late() {
+	
+	if(sim.cycle % 100 == 0)
+	{
+		load_ind=getIndvSumm(p1,p2,m1,100);
+		writeFile(outPref+"_indv_load_tetra.txt", load_ind, append=T);
+	}
+	
+	if(sim.cycle % 100 == 0)
+	{
+		Mut_surv=getMutSurv(p1,p2,m1,100);
+		writeFile(outPref+"_mut_surv_tetra.txt", Mut_surv, append=T);
+	
+	}
+
+
+
+}
+
+//////////////////////////////////OUTPUTS DIPLOID////////////////////////////////////////////////////
+2: late() {
+	
+	if(sim.cycle % 100 == 0)
+	{
+		load_ind=getIndvload_dip(p3,m2,100);
+		writeFile(outPref_dip+"_indv_load_dip.txt", load_ind, append=T);
+	}
+	
+	
+	if(sim.cycle % 100 == 0)
+	{
+		Mut_surv=getMutSurv_dip(p3,m2,100);
+		writeFile(outPref_dip+"_mut_surv_dip.txt", Mut_surv, append=T);
+	
+	}
+
+
+
+}
+
+///////////////////////////////END OF SIMULATION///////////////////////////////////////////////////
+s0 late() {
+	for (ind in p1.individuals) {
+		if (ind.tagF != p2.individuals[ind.tag].tagF) {
+			catn("oh no! there was an error for individual " + ind.index + " " + ind.sex + " " + ind.age);
+		}
+	}
+	catn("done!");
+	sim.simulationFinished();
+}
+
+///////////////////////////////////FUNCTIONS/////////////////////////////////
+//pop1=p1;pop2=p2;mut=m1;sampSize=10;
+function (s) getIndvSumm(o pop1,o pop2, o mut, i sampSize)
+{
+	indvCount=pop1.individualCount;
+	individuals=pop1.sampleIndividuals(sampSize);
+	out=c();
+	for(individual in individuals){
+		other = pop2.individuals[individual.tag];
+		mutsp1=individual.uniqueMutationsOfType(mut);
+		mutsp2=other.uniqueMutationsOfType(mut);
+		muts=unique(c(mutsp1,mutsp2));
+		Mutcount=size(muts);
+		if(Mutcount==0){next;}
+		counts=sapply(muts,"sum(individual.genomes.containsMutations(applyValue)) + sum(other.genomes.containsMutations(applyValue));");
+		mut_hom=muts[counts==4];
+		mut_het=muts[counts<4];
+		counts_het=counts[counts<4];
+		counts_homo=counts[counts==4]; // usando input_hs
+		if(length(mut_hom)>0){s_hom=mut_hom.getValue("s");}else{s_hom=0;}
+		//if(length(mut_hom)>0){s_hom=sapply(0:(length(counts_homo)-1),"mut_hom[applyValue].getValue('s')[counts_homo[applyValue]];");}else{s_hom=0;} // usando input_hs
+		if(length(mut_het)>0){
+			//s_het=mut_het.selectionCoeff;
+			//s_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('s')[counts_het[applyValue]];"); // usando input_hs
+			h_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('h')[counts_het[applyValue]];");
+			s_het=mut_het.getValue("s"); // para tomar los valores s de hs-input despues de modificas HM-nov-22
+		}else{s_het=0;h_het=0;}
+		
+		totalLoad=sum(abs(s_hom)) + sum(0.5*abs(s_het)); //aqui agregue abs a los valores de s_hom
+		relzLoad=sum(abs(s_hom)) + sum(h_het*abs(s_het)); //aqui agregue abs a los valores de s_hom
+		mskLoad=sum((0.5-h_het)*abs(s_het));
+		//	sum(relzLoad+mskLoad)==totalLoad
+		fitness=product(1-abs(s_hom)) * product(1-(h_het*abs(s_het)));
+		//cached_fit=p1.cachedFitness(individual.index)/p1.getValue("scal");
+		out=c(out,("K"+K+"_tetraploid" +"\t"+ sim.cycle +"\t"+ indvCount +"\t"+ individual.tag +"\t"+ Mutcount +"\t"+ totalLoad +"\t"+ relzLoad +"\t"+ mskLoad+"\t"+ fitness));
+	}
+	return(out);
+}
+
+//pop1=p1;pop2=p2;mut=m1;sampSize=10;
+function (s) getMutSurv(o pop1,o pop2, o mut, i sampSize)
+{
+	indvCount=pop1.individualCount;
+	individuals=pop1.sampleIndividuals(sampSize);
+	out0=c();
+	out1=c();
+	for(individual in individuals){
+		other = pop2.individuals[individual.tag];
+		mutsp1=individual.uniqueMutationsOfType(mut);
+		mutsp2=other.uniqueMutationsOfType(mut);
+		muts=unique(c(mutsp1,mutsp2));
+		Mutcount=size(muts);
+		if(Mutcount==0){next;}
+		counts=sapply(muts,"sum(individual.genomes.containsMutations(applyValue)) + sum(other.genomes.containsMutations(applyValue));");
+		mut_hom=muts[counts==4];
+		mut_het=muts[counts<4];
+		counts_het=counts[counts<4];
+		counts_homo=counts[counts==4]; // usando input_hs
+		ptetra=c(pop1,pop2);
+		freq_het=sim.mutationFrequencies(ptetra, mut_het);
+		freq_hom=sim.mutationFrequencies(ptetra, mut_hom);
+		
+		if(length(mut_hom)>0){s_hom=mut_hom.getValue("s");}else{s_hom=0;}
+		//if(length(mut_hom)>0){s_hom=sapply(0:(length(counts_homo)-1),"mut_hom[applyValue].getValue('s')[counts_homo[applyValue]];");}else{s_hom=0;} // usando input_hs
+		if(length(mut_het)>0){
+			//s_het=mut_het.selectionCoeff;
+			//s_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('s')[counts_het[applyValue]];"); // usando input_hs
+			s_het=mut_het.getValue("s"); // para tomar los valores s de hs-input despues de modificas HM-nov-22
+			h_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('h')[counts_het[applyValue]];");
+		}else{s_het=0;h_het=0;}
+		if(length(mut_hom)>0){h_hom=rep(1.0,length(s_hom));}else{h_hom=0;} //agregado
+		
+		fitness=product(1-abs(s_hom)) * product(1-(h_het*abs(s_het)));
+		
+		het=rep("het",length(h_het));
+		hom=rep("hom",length(s_hom));
+		//if(s_hom>0){hom=hom;}else{hom="NULL";}
+		h=c(h_het,rep(1,length(s_hom)));
+		//counts=c(counts,rep(4,length(s_hom)));
+		if(length(mut_hom)>0){counts_hom=rep(4,length(s_hom));}else{counts_hom="NULL";}
+		
+		//out=c(out,(sim.generation +"\t"+ individual.tag +"\t"+ Mutcount +"\t"+ fitness +"\t"+ paste(s_hom,sep=",") +"\t"+ paste(h_het,sep=",") +"\t"+ paste(s_het,sep=",") +"\t"+ paste(counts,sep=",")));
+		
+		out0=c(out0,(sim.cycle +"\t"+ individual.tag +"\t"+ Mutcount +"\t"+ fitness +"\t"+ s_het +"\t"+ h_het +"\t"+ counts_het +"\t"+freq_het));
+		out1=c(out1,(sim.cycle +"\t"+ individual.tag +"\t"+ Mutcount +"\t"+ fitness +"\t"+ s_hom +"\t"+ h_hom +"\t"+ counts_hom +"\t"+freq_hom));
+		out2=c(out0,out1);
+	
+	}
+	return(out2);
+
+}
+
+function (float) get_del_mutation_per_ind(lifso<Subpopulation> x)
+{
+	all_genomes = c(x.individuals,p2.individuals[x.individuals.tag]);
+	all_muts = unique(all_genomes.genomes.mutationsOfType(m1));
+	n_muts = 0;
+	if(size(all_genomes) != 0){
+		for(ind in x.individuals){
+			counts_1 = ind.genomes.mutationCountsInGenomes(all_muts);
+			counts_2 = p2.individuals[ind.tag].genomes.mutationCountsInGenomes(all_muts);
+			all_counts = counts_1 + counts_2;
+			n_muts = n_muts + size(which(all_counts != 0));
+		}
+		return n_muts / size(x.individuals);
+	}
+	else
+		return 0.0;
+}
+
+////heterozygous per site
+function (f) calc_Het_site(o pop, o mut) {
+	heterozygousSites = 0;
+	lenghtG = L;
+	icount = pop.individualCount;
+	Nalleles = icount * 4;
+	Lr = L -1;
+	ind = pop.individuals;
+	others = p2.individuals[ind.tag];
+	Gtetra = c(ind.genomes,others.genomes);
+	Muts = size(Gtetra.mutationsOfType(mut));
+	allelesPosition = sort(Gtetra.mutationsOfType(mut).position);
+	
+	for (site in 0:Lr) {
+		
+		if(Muts==0){next;}
+		allelesSite = allelesPosition == site;
+		allelesMut = sum(allelesSite);
+		hetXsite= 1- (((allelesMut/Nalleles)^2) + (((Nalleles-allelesMut)/Nalleles)^2));
+		heterozygousSites = c(heterozygousSites, hetXsite);
+		totHet = sum(heterozygousSites);
+	
+	}
+	totalHetXsite = totHet/lenghtG;
+	return totalHetXsite;
+}
+
+function (float)getNeutHet (o pop, o mut, i sampSize) //// (s) is equal to string and (o) to objects
+{
+	total=0;
+	sample = pop.sampleIndividuals(sampSize);
+	out=c();
+	for (ind in sample) {
+		
+		// Calculate the nucleotide heterozygosity of this individual
+		TAG=ind.tagF;
+		iP2=p2.individuals[p2.individuals.tagF==TAG];
+		GENOMES=c(ind.genomes[0],ind.genomes[1],iP2.genomes[0],iP2.genomes[1]);
+		
+		pairwise_tetra=c(); //simile a total=0;
+		for (i in 0:3){
+			for (j in 0:3){
+				if (i != j){
+					muts0=GENOMES[i].mutationsOfType(mut);
+					muts1=GENOMES[j].mutationsOfType(mut);
+					//muts=unique(c(muts0,muts1));
+					//Mutcount=size(muts);
+					
+					// Count the shared mutations
+					shared_count = sum(match(muts0, muts1) >= 0);
+					
+					// All remaining mutations in the genomes are unshared (i.e. heterozygous)
+					unshared_count = muts0.size() + muts1.size() - 2 * shared_count;
+					
+					// pi is the mean heterozygosity across the chromosome
+					pi_i= unshared_count / (sim.chromosome.lastPosition + 1);
+					//	print(i + "-" + j + "-" + pi_i);
+					pairwise_tetra=c(pairwise_tetra,pi_i);
+				}
+			}
+		}
+		pi_individuals=mean(pairwise_tetra);
+		total = total + pi_individuals;
+	}
+	pi = total/sampSize;
+	out = pi;
+	return(out);
+}
+
+
+/////////////////////////////////////FUNCTIONS DIPLOID///////////////////////////////////////
+function (s) getIndvload_dip(o pop1, o mut, i sampSize)
+{
+	indvCount=pop1.individualCount;
+	individuals=pop1.sampleIndividuals(sampSize);
+	out=c();
+	for(individual in individuals){
+		muts=individual.uniqueMutationsOfType(mut);
+		//mutsTrue=muts[muts.selectionCoeff<0];
+		Mutcount=size(muts);
+		if(Mutcount==0){next;}
+		counts=sapply(muts,"sum(individual.genomes.containsMutations(applyValue));");
+		mut_hom=muts[counts==2];
+		mut_het=muts[counts<2];
+		counts_het=counts[counts<2];
+		if(length(mut_hom)>0){s_hom=mut_hom.getValue("s_dip");}else{s_hom=0;}
+		if(length(mut_het)>0){
+			s_het=mut_het.getValue("s_dip");
+			h_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('h_dip')[counts_het[applyValue]];");
+		}else{s_het=0;h_het=0;}
+		
+		totalLoad=sum(abs(s_hom)) + sum(0.5*abs(s_het)); //aqui agregue abs a los valores de s_hom
+		relzLoad=sum(abs(s_hom)) + sum(h_het*abs(s_het)); //aqui agregue abs a los valores de s_hom
+		mskLoad=sum((0.5-h_het)*abs(s_het));
+		//	sum(relzLoad+mskLoad)==totalLoad
+		fitness=product(1-abs(s_hom)) * product(1-(h_het*abs(s_het)));
+		//cached_fit=p1.cachedFitness(individual.index)/p1.getValue("scal");
+		out=c(out,("K"+Kdiploid+"_diploid" +"\t"+ sim.cycle +"\t"+ indvCount +"\t"+ individual.index +"\t"+ Mutcount +"\t"+ totalLoad +"\t"+ relzLoad +"\t"+ mskLoad+"\t"+ fitness));
+	}
+	return(out);
+}
+
+//pop1=p1;mut1=m1;mut2=m2;sampSize=1;
+function (s) getMutSurv_dip(o pop1,o mut1, i sampSize)
+{
+	indvCount=pop1.individualCount;
+	individuals=pop1.sampleIndividuals(sampSize);
+	out=c();
+	out0=c();
+	out1=c();
+	for(individual in individuals){
+		muts1=individual.uniqueMutationsOfType(mut1);
+		//mutsTrue=muts1[muts1.selectionCoeff<0];
+		Mutcount=size(muts1);
+		if(Mutcount==0){next;}
+		counts=sapply(muts1,"sum(individual.genomes.containsMutations(applyValue));");
+		mut_hom=muts1[counts==2];
+		mut_het=muts1[counts<2];
+		counts_het=counts[counts<2];
+		freq_het=sim.mutationFrequencies(pop1, mut_het);
+		if(length(mut_hom)>0){freq_hom=sim.mutationFrequencies(pop1, mut_hom);}else{freq_hom=0;}
+		
+		if(length(mut_hom)>0){s_hom=mut_hom.getValue("s_dip");}else{s_hom=0;}
+		//s_hom=mut_hom.getValue("s");
+		if(length(mut_het)>0){
+			s_het=mut_het.getValue("s_dip");
+			//h_het=mut_het.getValue("dom");
+			h_het=sapply(0:(length(counts_het)-1),"mut_het[applyValue].getValue('h_dip')[counts_het[applyValue]];");
+		}else{s_het=0;h_het=0;}
+		if(length(mut_hom)>0){h_hom=rep(1.0,length(s_hom));}else{h_hom=0;} //agregado
+		
+		fitness=product(1-abs(s_hom)) * product(1-(h_het*abs(s_het)));
+		
+		het=rep("het",length(h_het));
+		hom=rep("hom",length(s_hom));
+		//if(s_hom>0){hom=hom;}else{hom="NULL";}
+		h=c(h_het,rep(1.0,length(s_hom)));
+		//counts=c(counts,rep(2,length(s_hom)));
+		if(length(mut_hom)>0){counts_hom=rep(2,length(s_hom));}else{counts_hom="NULL";}
+		
+		//out=c(out,(sim.cycle+"\t"+individual.index +"\t"+ Mutcount +"\t"+ fitness+"\t"+ c(het,hom) +"\t"+ c(s_het,s_hom) +"\t"+ h +"\t"+ c(freq_het,freq_hom)));
+		out0=c(out0,(sim.cycle +"\t"+ individual.index +"\t"+ Mutcount +"\t"+ fitness +"\t"+ s_het +"\t"+ h_het +"\t"+ counts_het+"\t"+ freq_het));
+		out1=c(out1,(sim.cycle +"\t"+ individual.index +"\t"+ Mutcount +"\t"+ fitness +"\t"+ s_hom +"\t"+ h_hom +"\t"+ counts_hom+"\t"+ freq_hom));
+		out2=c(out0,out1);
+	
+	
+	}
+	return(out2);
+
+}
+
+
+////heterozygous per site
+function (f) calc_Het_site_dip(o pop, o mut) {
+	heterozygousSites = 0;
+	lenghtG = L;
+	icount = pop.individualCount;
+	Nalleles = icount * 2;
+	Lr = L -1;
+	ind = pop.individuals;
+	genomes = ind.genomes;
+	Muts = size(genomes.mutationsOfType(mut));
+	allelesPosition = sort(genomes.mutationsOfType(mut).position);
+	
+	for (site in 0:Lr) {
+		
+		if(Muts==0){next;}
+		allelesSite = allelesPosition == site;
+		allelesMut = sum(allelesSite);
+		hetXsite= 1- (((allelesMut/Nalleles)^2) + (((Nalleles-allelesMut)/Nalleles)^2));
+		heterozygousSites = c(heterozygousSites, hetXsite);
+		totHet = sum(heterozygousSites);
+	
+	}
+	totalHetXsite = totHet/lenghtG;
+	return totalHetXsite;
+}
+
+//// function for heterozygosity
+
+function (f)getNeutHet_dip (o pop, o mut, i sampSize) //// (s) is equal to string and (o) to objects
+{
+	
+	total = 0.0;
+	sample = pop.sampleIndividuals(sampSize);
+	
+	for (ind in sample)
+	{
+		// Calculate the nucleotide heterozygosity of this individual
+		muts0 = ind.genomes[0].mutationsOfType(mut);
+		muts1 = ind.genomes[1].mutationsOfType(mut);
+		
+		// Count the shared mutations 
+		shared_count = sum(match(muts0, muts1) >= 0);
+		
+		// All remaining mutations in the genomes are unshared (i.e. heterozygous)
+		unshared_count = muts0.size() + muts1.size() - 2 * shared_count;
+		
+		// pi is the mean heterozygosity across the chromosome
+		pi_ind = unshared_count / (sim.chromosome.lastPosition + 1);
+		total = total + pi_ind;
+	}
+	
+	pi = total/sampSize;
+	//Ne = pi / (4*mu);
+	out = pi;
+	return out;
+
+}
