@@ -37,7 +37,7 @@ initialize() {
 	defineConstant("outName_dip", start+"_"+"chr200M_diploid_"+"load_hs-input_burn100");
 	defineConstant("outTimes",outPath+"/"+"TIME_"+outName+"_K"+K+"_seed"+getSeed()+"_lastGen"+lastGen);
 	
-	////input deleterious DFE////	
+	/////input deleterious DFE TETRAPLOID////	
 	defineConstant("hs_input", "/PATH/WHERE/IS/HS-INPUT/FILE/Burn-in_hs-input_partial_recessive_mut_tetraploids.txt");
 	defineConstant("del_mut", 1000); // number of deleterious mutation
 	hs=readFile(hs_input);
@@ -120,7 +120,7 @@ reproduction(p3) {
 
 }
 
-/////////////////////DFE///////////////////////////
+/////////////////////DFE TETRAPLOID///////////////////////////
 mutation(m1,p1){
 	////////////h & s from burn-in file/////////////
 	MUT=sample(0:mutCOUNT,1);//HM-nov-22
@@ -175,7 +175,7 @@ mutation(m2,p3){
 	writeFile(outPref + "_indv_load_tetra.txt",HEAD_INDV,append=F);
 	writeFile(outPref + "_mut_surv_tetra.txt",HEAD_MUT2,append=F);
 	
-	////////////////////////////FILES DIPLOID//////////////////////////////////////
+	////////////////////////////FILES DIPLOIDS//////////////////////////////////////
 	writeFile(outPref_dip + "_indv_load_dip.txt",HEAD_INDV,append=F);
 	writeFile(outPref_dip + "_mut_surv_dip.txt",HEAD_MUT2,append=F);
 
