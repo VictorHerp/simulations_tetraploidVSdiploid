@@ -5,4 +5,4 @@ To run the bottleneck and stable population simulations you need to load the fil
 
 Additionally, this repository includes an R script for plotting the simulation results.
 
-If you find any of these scripts useful, please cite the article: 
+If you find any of these scripts useful, please cite the article: Muñoz-Mora, V.H., Giannelli, F., Congiu, L., Morales, H.E. & Bertorelle, G. (202?). The hidden threat: genetic load dynamics in tetraploids and diploids. Evolution Letters.
