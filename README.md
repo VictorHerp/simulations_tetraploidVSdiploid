@@ -39,18 +39,18 @@ To run the bottleneck and stable population simulations you need to load the fil
 **1. Stable population simulations**
 ```bash
 slim -d "hs_input='input/Burn-in_hs-input_partial_recessive_mut_tetraploids.txt'" \
-     sim_stable_pop/tetraploid_stable.slim
+     sim_stable_pop/slim4_TETRA-DIPLOID_genetic_load_using_hs-input_small-large_populations.slim
 ```
 
 **2. Bottleneck simulations**
 ```bash
 slim -d "hs_input='input/Burn-in_hs-input_partial_recessive_mut_tetraploids.txt'" \
-     sim_bottlenecked_pop/tetraploid_bottleneck.slim
+     sim_bottlenecked_pop/slim4_TETRA-DIPLOID_genetic_load_using_hs-input_bottleneck.slim
 ```
 
 **3. Plot results**
 ```r
-source("R_scripts/plot_genetic_load.R")
+source("R_scripts/scripts.R")
 ```
 
 ## Citation
